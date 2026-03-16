@@ -5,8 +5,8 @@
   "url": "https://github.com/Mico27/gbs-AppendLoadTextPlugin",
   "description": "Allows appending text to already loaded text before displaying it. Also adds more granular text options events",
   "license": "MIT",
-  "version": "4.2.2",
-  "gbsVersion": ">=4.2.2",
+  "version": "4.2.3",
+  "gbsVersion": ">=4.2.3",
   "order": -1,
   "engineAltRules": [
     {

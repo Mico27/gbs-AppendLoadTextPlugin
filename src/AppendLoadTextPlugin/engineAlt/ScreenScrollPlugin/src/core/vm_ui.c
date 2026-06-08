@@ -1,4 +1,4 @@
-#pragma bank 255
+﻿#pragma bank 255
 
 #include <string.h>
 #include <stdlib.h>
@@ -212,9 +212,9 @@ void vm_overlay_clear(SCRIPT_CTX * THIS, UBYTE x, UBYTE y, UBYTE w, UBYTE h, UBY
     } else {
 #ifdef CGB
         if (_is_CGB) {
-            VBK_REG = 1;
+            VBK_REG = VBK_ATTRIBUTES;
             fill_win_rect(x, y, w, h, overlay_priority | (text_palette & 0x07u));
-            VBK_REG = 0;
+            VBK_REG = VBK_TILES;
         }
 #endif
         fill_win_rect(x, y, w, h, ((color) ? ui_white_tile : ui_black_tile));
@@ -247,9 +247,9 @@ void vm_overlay_scroll(SCRIPT_CTX * THIS, UBYTE x, UBYTE y, UBYTE w, UBYTE h, UB
     UBYTE * base_addr = GetWinAddr() + (y << 5) + x;
 #ifdef CGB
     if (_is_CGB) {
-        VBK_REG = 1;
+        VBK_REG = VBK_ATTRIBUTES;
         scroll_rect(base_addr, w, h, overlay_priority | (text_palette & 0x07u));
-        VBK_REG = 0;
+        VBK_REG = VBK_TILES;
     }
 #endif
     scroll_rect(base_addr, w, h, ((color) ? ui_white_tile : ui_black_tile));
@@ -262,9 +262,9 @@ void vm_overlay_set_submap(SCRIPT_CTX * THIS, UBYTE x, UBYTE y, UBYTE w, UBYTE h
     UWORD offset = (scene_y * image_tile_width) + scene_x;
 #ifdef CGB
     if (_is_CGB) {
-        VBK_REG = 1;
+        VBK_REG = VBK_ATTRIBUTES;
         set_xy_win_submap(image_attr_ptr + offset, image_attr_bank, image_tile_width, x, y, w, h);
-        VBK_REG = 0;
+        VBK_REG = VBK_TILES;
     }
 #endif
     set_xy_win_submap(image_ptr + offset, image_bank, image_tile_width, x, y, w, h);
@@ -275,9 +275,9 @@ void vm_overlay_set_submap_ex(SCRIPT_CTX * THIS, INT16 params_idx) OLDCALL BANKE
     UWORD offset = (params->scene_y * image_tile_width) + params->scene_x;
 #ifdef CGB
     if (_is_CGB) {
-        VBK_REG = 1;
+        VBK_REG = VBK_ATTRIBUTES;
         set_xy_win_submap(image_attr_ptr + offset, image_attr_bank, image_tile_width, params->x, params->y, params->w, params->h);
-        VBK_REG = 0;
+        VBK_REG = VBK_TILES;
     }
 #endif
     set_xy_win_submap(image_ptr + offset, image_bank, image_tile_width, params->x, params->y, params->w, params->h);
@@ -293,9 +293,9 @@ void vm_overlay_set_map(SCRIPT_CTX * THIS, INT16 idx, INT16 x_idx, INT16 y_idx, 
     if (_is_CGB) {
         ReadBankedFarPtr(&tilemap, (void *)&(background->cgb_tilemap_attr), bank);
         if (tilemap.bank) {
-            VBK_REG = 1;
+            VBK_REG = VBK_ATTRIBUTES;
             SetBankedWinTiles(x, y, w, h, tilemap.ptr, tilemap.bank);
-            VBK_REG = 0;
+            VBK_REG = VBK_TILES;
         }
     }
 #endif

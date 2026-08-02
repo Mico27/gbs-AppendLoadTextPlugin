@@ -4,7 +4,7 @@
 
 A GB Studio engine plugin that extends the standard text system with the ability to **build up a text string across multiple load steps** before displaying it, and provides more granular control over text rendering options. It separates the "load text into buffer" step from the "display text" step, adds an append mode so consecutive loads accumulate instead of overwrite, lets you switch the render target between the background and overlay layers at any time, and exposes a flexible overlay/text wait event.
 
-An `engineAlt` variant is included for compatibility when the plugin is used alongside the [ScreenScrollPlugin](https://github.com/Mico27/gbs-ScreenScrollPlugin).
+A compatibility variant is included for use alongside the [ScreenScrollPlugin](https://github.com/Mico27/gbs-ScreenScrollPlugin).
 
 All events are in the **Dialogue** group of the script editor.
 
@@ -18,11 +18,9 @@ All events are in the **Dialogue** group of the script editor.
 
 1. [Concepts](#concepts)
 2. [Project Setup](#project-setup)
-3. [How to Use](#how-to-use)
-4. [Technicalities and Restrictions](#technicalities-and-restrictions)
-5. [Events Reference](#events-reference)
-6. [Inner Workings](#inner-workings)
-7. [Memory Footprint](#memory-footprint)
+3. [Size Limits and Restrictions](#size-limits-and-restrictions)
+4. [Events Reference](#events-reference)
+5. [Memory Footprint](#memory-footprint)
 
 ---
 
@@ -47,11 +45,11 @@ When `load_text_mode` is set to `1` (Append), each subsequent **Load text** call
 
 No special scene configuration is required. Install the plugin into your GB Studio project's `plugins` folder. The five new events will appear automatically in the **Dialogue** group of the script editor.
 
-If your project also uses the **ScreenScrollPlugin**, the `engineAlt/ScreenScrollPlugin/src/core/vm_ui.c` file takes priority and provides the same append/load functionality with the scroll-plugin's additional UI changes included.
+If your project also uses the **ScreenScrollPlugin**, the matching compatibility variant is selected automatically and provides the same append and load functionality with that plugin's UI changes included.
 
 ---
 
-## How to Use
+### How to Use
 
 ### Basic Load and Display
 
@@ -75,7 +73,7 @@ Call **Change text layer** at any point before **Display Loaded Text** to direct
 
 ---
 
-## Technicalities and Restrictions
+## Size Limits and Restrictions
 
 ### Buffer Size
 
@@ -188,51 +186,6 @@ A flexible wait event that suspends script execution (or blocks all scripts if m
 | Wait for button A | Wait until the A button is pressed. |
 | Wait for button B | Wait until the B button is pressed. |
 | Wait for any button | Wait until any button is pressed. |
-
----
-
-## Inner Workings
-
-### The `load_text` Function
-
-The core of the plugin is the `load_text` function in `vm_ui.c`. It is called by both `vm_load_text` (inline text in the script bytecode) and `vm_load_text_ex` (indirect pointer from a variable):
-
-```
-d = prev_d = ui_text_data;
-if (load_text_mode) {
-    d += loaded_text_length;   // start writing after existing content
-}
-```
-
-The function then walks the source string byte-by-byte:
-- Regular characters are copied directly.
-- `%` format codes consume the next argument from the script stack and expand to digits, a single byte, or a control-code sequence.
-- After the loop: `loaded_text_length = d - prev_d` — since `prev_d` is always `ui_text_data` (the buffer origin), this stores the total filled length regardless of where writing began.
-
-This design means `loaded_text_length` always correctly represents "how many bytes of text are ready to display" even after multiple appended loads.
-
-### Format Specifier Expansion
-
-The `%` dispatch switch handles each code:
-- **`%d`**: calls `itoa_format(arg, d, 0)` — converts the `INT16` argument to a decimal ASCII string with no padding. Returns the number of bytes written.
-- **`%D[n]`**: calls `itoa_format(arg, d, n)` — same but zero-pads to `n` digits, read from the next byte of the source string.
-- **`%c`**: writes `(unsigned char)(arg)` — a single character whose ASCII value equals the variable.
-- **`%t`**: writes the two-byte speed control code `0x01, arg + 0x02` — matches the GB Studio inline speed format.
-- **`%f`**: writes the two-byte font-switch control code `0x02, arg + 0x01` — matches the GB Studio inline font format.
-
-For right-to-left fonts (`vwf_direction != UI_PRINT_LEFTTORIGHT`), `itoa_format` reverses the digit string before returning.
-
-### Switching the Text Layer
-
-`vm_switch_text_layer` sets `text_render_base_addr` to either `GetBkgAddr()` (background VRAM map base) or `GetWinAddr()` (window VRAM map base). The VWF renderer uses `text_render_base_addr` as the origin for all tilemap writes, so changing it before **Display Loaded Text** redirects the entire render pass to the chosen layer without any other changes.
-
-### Display and VRAM Tile Allocation
-
-`vm_display_text` configures the VWF start tile. On CGB it handles the split-bank layout: tile indices below `0x100 − TEXT_BUFFER_START` go into VRAM bank 0; indices above that threshold are remapped into bank 1 by calling `ui_set_start_tile` with `TEXT_BUFFER_START_BANK1`. The `TEXT_OPT_PRESERVE_POS` option flag skips resetting `text_render_base_addr` to the base, allowing the cursor to continue where the previous render left off.
-
-### Overlay Wait
-
-`vm_overlay_wait` is a waitable VM function. In non-modal mode it checks each enabled condition flag against the current state. If any condition is unmet it sets `THIS->waitable = 1` and rewinds `THIS->PC` by the instruction size so the VM re-executes the same wait instruction on the next frame. Once all conditions pass simultaneously the function returns without rewinding, and the script advances. In modal mode it delegates to `ui_run_modal`, which spins in a blocking loop until the flags are satisfied.
 
 ---
 

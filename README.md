@@ -1,12 +1,19 @@
 # gbs-AppendLoadTextPlugin
 
-**Version 4.3.0 — Requires GB Studio ≥ 4.3.0**
+**Version 4.3.0. Requires GB Studio 4.3.0 or newer.**
 
-A GB Studio engine plugin that extends the standard text system with the ability to **build up a text string across multiple load steps** before displaying it, and provides more granular control over text rendering options. It separates the "load text into buffer" step from the "display text" step, adds an append mode so consecutive loads accumulate instead of overwrite, lets you switch the render target between the background and overlay layers at any time, and exposes a flexible overlay/text wait event.
+Splits GB Studio's text handling into two steps, preparing the text and drawing it, so a script can
+assemble a line out of several pieces before anything appears on screen.
 
-A compatibility variant is included for use alongside the [ScreenScrollPlugin](https://github.com/Mico27/gbs-ScreenScrollPlugin).
+That gets you things the stock **Display Text** event cannot do: a shop line that reads
+"You bought 3 Potions for 900G" built from three separate pieces, a name the player entered dropped
+into the middle of a sentence, text drawn onto the background instead of the dialogue box, and a
+wait that ends on the overlay finishing, the text finishing, or a button press.
 
-All events are in the **Dialogue** group of the script editor.
+A compatibility variant ships for the
+[ScreenScrollPlugin](https://github.com/Mico27/gbs-ScreenScrollPlugin).
+
+All events are in the **Dialogue** group.
 
 <img width="403" height="1293" alt="image" src="https://github.com/user-attachments/assets/9e8093cd-688a-4286-9d3c-a6ccec356991" />
 
@@ -20,99 +27,101 @@ All events are in the **Dialogue** group of the script editor.
 2. [Project Setup](#project-setup)
 3. [Size Limits and Restrictions](#size-limits-and-restrictions)
 4. [Events Reference](#events-reference)
-5. [Memory Footprint](#memory-footprint)
-6. [Bank 0 (HOME) Usage](#bank-0-home-usage)
-7. [Changelog](#changelog)
+5. [FAQ](#faq)
+6. [Memory Footprint](#memory-footprint)
+7. [Bank 0 (HOME) Usage](#bank-0-home-usage)
+8. [Changelog](#changelog)
 
 ---
 
 ## Concepts
 
-### The Text Buffer
+### Two steps instead of one
 
-GB Studio stores text to be displayed in a shared byte array called `ui_text_data`. Normally each **Display Text** event compiles the text inline and fills the buffer in one go. This plugin separates that into two distinct operations:
+GB Studio keeps the text it is about to show in one shared area. The stock **Display Text** event
+fills that area and draws it in a single move. This plugin separates them:
 
-- **Load text** — writes encoded text bytes into `ui_text_data` and records how many bytes were written in `loaded_text_length`.
-- **Display Loaded Text** — triggers the VWF renderer to draw whatever is currently in the buffer onto the tilemap.
+- **Load text** puts text into the area and records how long it is.
+- **Display Loaded Text** draws whatever is in the area at that moment.
 
-Because loading and displaying are separate, you can call **Load text** several times before calling **Display Loaded Text**, optionally building up a longer string by enabling **Append** mode between loads.
+Because they are separate, you can call **Load text** several times and then draw the result once.
 
-### Append Mode
+### Append mode
 
-When `load_text_mode` is set to `1` (Append), each subsequent **Load text** call starts writing at the end of the previous load's data rather than at the beginning of the buffer. The `loaded_text_length` counter accumulates across calls, tracking the total bytes written so far. When `load_text_mode` is `0` (Default), every **Load text** call resets to the start of the buffer.
+**Change load text mode** set to **Append** makes each **Load text** carry on from where the last
+one stopped. Set back to **Default**, each **Load text** starts over from the beginning.
 
 ---
 
 ## Project Setup
 
-No special scene configuration is required. Install the plugin into your GB Studio project's `plugins` folder. The five new events will appear automatically in the **Dialogue** group of the script editor.
+Copy the plugin into your project's `plugins` folder. The five events appear in the **Dialogue**
+group. There is nothing to configure.
 
-If your project also uses the **ScreenScrollPlugin**, the matching compatibility variant is selected automatically and provides the same append and load functionality with that plugin's UI changes included.
+If your project also uses the **ScreenScrollPlugin**, GB Studio picks the matching variant
+automatically.
 
----
+### Loading and displaying
 
-### How to Use
+1. Call **Load text** with the text you want.
+2. Open the dialogue box if you need one, with the stock **Show Overlay** and **Move Overlay**
+   events.
+3. Call **Display Loaded Text**.
+4. Call **Wait for overlay/text to finish displaying** to pause until the drawing has finished.
 
-### Basic Load and Display
+### Building a line out of pieces
 
-1. Call **Load text** with the text you want to display.
-2. Open the overlay if needed (standard **Show Overlay** / **Move Overlay** events).
-3. Call **Display Loaded Text** to render it.
-4. Use **Wait for overlay/text to finish displaying** to pause until text drawing is complete.
+1. Call **Change load text mode** and choose **Append**.
+2. Call **Load text** for the first piece, for example `You bought `.
+3. Call **Load text** for the next piece, for example `%d` to insert a variable.
+4. Call **Load text** for the rest, for example ` Potions.`.
+5. Call **Display Loaded Text** to draw the whole line.
+6. Call **Change load text mode** and choose **Default** so the next text starts fresh.
 
-### Appending Multiple Text Segments
+### Drawing on the background instead of the dialogue box
 
-1. Call **Change load text mode** → **Append**.
-2. Call **Load text** for the first segment (e.g. a static label).
-3. Call **Load text** again for the second segment (e.g. a variable value using `%d`).
-4. Call **Load text** once more for any trailing text if needed.
-5. Call **Display Loaded Text** to render the combined result.
-6. Call **Change load text mode** → **Default** to reset for the next text operation.
-
-### Switching the Target Layer
-
-Call **Change text layer** at any point before **Display Loaded Text** to direct rendering to either the background tilemap or the overlay (window) tilemap. This persists until changed again.
+Call **Change text layer** at any point before **Display Loaded Text**. The choice sticks until you
+change it again.
 
 ---
 
 ## Size Limits and Restrictions
 
-### Buffer Size
+### The text area has a fixed size
 
-The `ui_text_data` array has a fixed size shared with the standard GB Studio text system. Appending across too many **Load text** calls without displaying can overflow the buffer. Keep the total accumulated text within the normal dialogue line limits.
+It is the same area the stock text system uses. Appending too much before drawing overruns it. Keep
+the total within normal dialogue length.
 
-### load_text_mode Persists
+### The append setting sticks
 
-`load_text_mode` is a global flag. If you enable Append mode and then branch (condition, jump, etc.) without calling **Change load text mode** → **Default**, subsequent **Load text** calls elsewhere in the script will still append. Always reset to Default mode after you are done appending.
+It is a single global setting. Turning on Append and then branching elsewhere in your scripts
+without setting it back means those scripts append too. Set it back to Default when you are done.
 
-### loaded_text_length Measures from Buffer Start
+### Substitutions inside Load text
 
-`loaded_text_length` is updated after every **Load text** call to reflect the total byte count from the beginning of `ui_text_data`, not from the start of the most recent load. This means it correctly accumulates across multiple append calls.
+| Code | What it inserts |
+|------|-----------------|
+| `%d` | A whole number from the next variable, with a minus sign if negative. |
+| `%D` then a digit | The same, padded with zeros to that many digits. |
+| `%c` | One character, whose code comes from the variable. |
+| `%t` | A text speed change, 0 to 7, from the variable. |
+| `%f` | A font change, using the font number in the variable. |
+| `%%` | A literal percent sign. |
 
-### Format Specifiers
+### Use previous text position
 
-Inside the text field of **Load text**, the following `%` format codes expand variable values at compile/load time:
+With this ticked, **Display Loaded Text** carries on from where the last draw stopped instead of
+starting at the top of the box. That is how you fill a text box a piece at a time.
 
-| Code | Expansion |
-|------|-----------|
-| `%d` | Signed decimal integer from the next script argument variable. |
-| `%D` followed by a digit `n` | Signed decimal integer, zero-padded to `n` digits wide. |
-| `%c` | Single character whose ASCII code is taken from the variable value. |
-| `%t` | Inline text speed control code (value 0–7 from the variable). |
-| `%f` | Inline font-switch code (font index from the variable). |
-| `%%` | A literal `%` character. |
+### Specify start tile
 
-### preserve_pos in Display Loaded Text
+Chooses which tile slot the text renderer starts writing letters into. On Game Boy Color this also
+decides which tile bank they land in. Leave it unticked to carry on from the last one used.
 
-When **Use previous text position** is checked, the text cursor does not reset to `text_render_base_addr` at the start of rendering. Instead it continues from wherever the previous display call left off. This allows multiple **Display Loaded Text** calls to fill a text box progressively across frames.
+### The layer choice sticks
 
-### start_tile in Display Loaded Text
-
-The **Specify start tile** option lets you control which VRAM tile slot the VWF renderer starts writing glyph bitmaps into. On CGB this accounts for the split VRAM bank layout (bank 0 tiles 0x00–0x7F, bank 1 tiles 0x80–0xFF). Leave it unchecked to continue from the last written tile.
-
-### Layer Change Persists
-
-The text layer set by **Change text layer** (background or overlay) persists across events and scene scripts until explicitly changed again. It is not reset by **Load text** or **Display Loaded Text**.
+The layer set by **Change text layer** stays until you change it again. Loading or displaying text
+does not reset it.
 
 ---
 
@@ -120,80 +129,104 @@ The text layer set by **Change text layer** (background or overlay) persists acr
 
 All events are in the **Dialogue** group.
 
----
-
 ### Load text
 
-**`EVENT_UI_LOAD_TEXT`**
+Puts text into the shared text area, expanding any `%` substitutions. In **Default** mode it starts
+from the beginning. In **Append** mode it carries on from the last load.
 
-Encodes the text string (including any `%` format substitutions) into the `ui_text_data` buffer. In **Default** mode the buffer is overwritten from the start. In **Append** mode the new text is appended after the previously loaded content.
-
-Does not render anything — it only populates the buffer. Pair with **Display Loaded Text** to actually draw the text.
+Nothing appears on screen. Follow it with **Display Loaded Text**.
 
 | Field | Description |
 |-------|-------------|
-| Text | The text to load. Supports standard GB Studio text formatting, inline speed codes, colour codes, and `%d`/`%c`/`%t`/`%f` format specifiers for variable substitution. |
-
----
+| Text | The text to load. Supports the usual GB Studio formatting, speed and colour codes, and the `%d`, `%c`, `%t` and `%f` substitutions. |
 
 ### Display Loaded Text
 
-**`EVENT_UI_DISPLAY_LOADED_TEXT`**
-
-Triggers the VWF renderer to draw the current contents of `ui_text_data` onto the active text layer (background or overlay). Does not load or change the buffer — only renders what was last loaded.
+Draws whatever is currently in the text area, onto the background or the overlay. It does not
+change the text.
 
 | Field | Description |
 |-------|-------------|
-| Use previous text position | When checked, resumes rendering from the cursor position left by the previous display call instead of resetting to the base address. |
-| Specify start tile | When checked, enables the **Starting tile** field. |
-| Starting tile | The VRAM tile slot index at which the VWF renderer begins writing glyph bitmaps. On CGB, values above `0x100 − TEXT_BUFFER_START` spill into VRAM bank 1. |
-
----
+| Use previous text position | Carry on from where the last draw stopped instead of starting at the top. |
+| Specify start tile | Turns on the **Starting tile** field. |
+| Starting tile | The tile slot the renderer starts writing letters into. On Game Boy Color, higher values move into the second tile bank. |
 
 ### Change load text mode
 
-**`EVENT_UI_CHANGE_LOAD_TEXT_MODE`**
-
-Sets the global `load_text_mode` flag that controls how subsequent **Load text** calls behave.
-
 | Field | Description |
 |-------|-------------|
-| Load text mode | **Default** (0) — each **Load text** overwrites the buffer from position 0. **Append** (1) — each **Load text** adds to the end of the existing buffer content. |
-
----
+| Load text mode | **Default** starts each **Load text** from the beginning. **Append** carries on from the last one. |
 
 ### Change text layer
 
-**`EVENT_UI_CHANGE_TEXT_LAYER`**
-
-Redirects text rendering to the chosen VRAM tilemap layer. The change persists until this event is called again.
+Sends text to the chosen layer. The choice sticks until changed.
 
 | Field | Description |
 |-------|-------------|
-| Location | **Background** — text is written into the background tilemap (`GetBkgAddr()`). **Overlay** — text is written into the window/overlay tilemap (`GetWinAddr()`). |
-
----
+| Location | **Background** draws into the scene's background. **Overlay** draws into the dialogue box layer. |
 
 ### Wait for overlay/text to finish displaying
 
-**`EVENT_UI_OVERLAY_WAIT`**
-
-A flexible wait event that suspends script execution (or blocks all scripts if modal) until all selected conditions are satisfied. Each condition is independent and all checked conditions must be true simultaneously before the wait resolves.
+Pauses until every condition you tick is satisfied at the same time.
 
 | Field | Description |
 |-------|-------------|
-| Modal | When checked, the wait blocks all other script threads (equivalent to `ui_run_modal`). When unchecked the script yields each frame until conditions are met. |
-| Wait for overlay | Wait until the overlay window finishes its slide animation (`win_pos == win_dest_pos`). |
-| Wait for text | Wait until the VWF renderer has drawn all queued characters (`text_drawn == TRUE`). |
-| Wait for button A | Wait until the A button is pressed. |
-| Wait for button B | Wait until the B button is pressed. |
-| Wait for any button | Wait until any button is pressed. |
+| Modal | Holds every script, not just this one. Unticked, only this script waits and the rest keep running. |
+| Wait for overlay | Wait until the overlay has finished sliding. |
+| Wait for text | Wait until every queued character has been drawn. |
+| Wait for button A | Wait for A. |
+| Wait for button B | Wait for B. |
+| Wait for any button | Wait for any button. |
+
+---
+
+## FAQ
+
+**How do I show a sentence with a variable in the middle?**
+Turn on Append, then call **Load text** three times: the words before, `%d` for the number, and the
+words after. Call **Display Loaded Text**, then set the mode back to Default.
+
+**Can I do that with the stock Display Text event?**
+A single **Display Text** already handles one `%d`. This plugin is for cases where the pieces come
+from different places in your script, or where you want to decide what to include before showing
+anything.
+
+**How do I write text directly onto the scene background?**
+Call **Change text layer** and choose **Background** before **Display Loaded Text**. Handy for a
+title screen, a sign, or a heads-up display that is not in a dialogue box.
+
+**My text kept growing across unrelated dialogue. Why?**
+Append mode was left on. It is one global setting, so set it back to Default as soon as you have
+drawn the assembled line.
+
+**How do I reveal a text box a line at a time?**
+Tick **Use previous text position** on the second and later **Display Loaded Text** calls. Each one
+carries on where the last stopped.
+
+**How do I wait until the text has finished drawing?**
+Use **Wait for overlay/text to finish displaying** with **Wait for text** ticked. Add **Wait for
+button A** to also require a keypress.
+
+**What happens if I append too much?**
+The text area has a fixed size shared with the stock text system, and going past it overruns it.
+Keep the total to normal dialogue length.
+
+**Does this replace the stock Display Text event?**
+No. The stock events keep working. Use these when you need to assemble text before showing it.
+
+**Does it work with the ScreenScroll plugin?**
+Yes. A compatibility variant ships with it and GB Studio picks it automatically.
+
+**Can I change font or speed partway through a line?**
+Yes. Use `%f` for the font and `%t` for the speed, taking the value from a variable.
 
 ---
 
 ## Memory Footprint
 
-Measured against the stock GB Studio **4.3.0-e1** engine by `measure_plugin_memory.js` (per-file SDCC compile with GB Studio's own build flags, at default engine settings; report of 2026-08-13). Figures are this plugin's *delta* versus stock — a file that replaces a stock engine file counts only the difference, which is why a plugin can come out negative. Using the plugin's events additionally compiles a few bytes of GBVM script per call into your project's script banks, on top of the fixed cost below.
+Measured against the stock GB Studio **4.3.0-e1** engine at default engine settings, report of
+2026-08-13. Figures are the difference against a stock project. Each event you use also compiles a
+few bytes of script into your project, on top of the fixed cost below.
 
 | Budget | Cost |
 |---|---|
@@ -201,10 +234,15 @@ Measured against the stock GB Studio **4.3.0-e1** engine by `measure_plugin_memo
 | WRAM | +3 bytes |
 | Banked ROM | 0 bytes |
 
-- **Bank 0:** 31 bytes are resident in the non-switchable bank (`vm_ui.c`); everything else lives in a switchable bank. See [Bank 0 (HOME) Usage](#bank-0-home-usage).
-- **WRAM:** 3 bytes — the `load_text_mode` / `loaded_text_length` bookkeeping the append and clear events need.
-- **Banked ROM:** no change. The plugin's `vm_ui.c` replacement compiles to the same banked size as the stock one; its whole cost shows up in bank 0.
-- **Engine WRAM headroom:** a stock GB Studio 4.3.0 project leaves about **854 bytes** of WRAM free (usable engine WRAM is 7,776 bytes at 0xC0A0–0xDF00; the stock engine uses 6,922). With this plugin installed roughly **851 bytes** remain. That does not change with the number of global variables your project defines: the script memory array is a fixed 3,584 bytes at stock engine settings (VM_HEAP_SIZE + VM_MAX_CONTEXTS × VM_CONTEXT_STACK_SIZE = 768 + 16 × 64 words).
+- **Bank 0:** 31 bytes sit in the fixed bank, in the text event code. Everything else lives in a
+  switchable bank. See [Bank 0 (HOME) Usage](#bank-0-home-usage).
+- **WRAM:** 3 bytes to remember the append setting and how much text is loaded.
+- **Banked ROM:** no change. The plugin's text event code compiles to the same banked size as the
+  stock version, so its whole cost shows up in bank 0.
+- **Engine WRAM headroom:** a stock GB Studio 4.3.0 project leaves about **854 bytes** of WRAM
+  free (the engine has 7,776 bytes to work with and uses 6,922 of them). With this plugin
+  installed roughly **851 bytes** remain. Adding more global variables to your project does not
+  change that figure, because script memory is a fixed 3,584 byte block at stock engine settings.
 - **SRAM:** not used.
 
 ---
@@ -212,10 +250,9 @@ Measured against the stock GB Studio **4.3.0-e1** engine by `measure_plugin_memo
 <!-- BANK0:BEGIN -->
 ## Bank 0 (HOME) Usage
 
-Bank 0 is the 16 KB non-switchable ROM bank that the GB Studio engine core,
-the interrupt handlers and the GBDK runtime all share. Banked ROM is cheap
-(add another bank), bank 0 is not, so it is usually the first thing a project
-runs out of.
+Bank 0 is the 16 KB fixed ROM bank shared by the GB Studio engine core, the
+interrupt handlers and the GBDK runtime. Extra banked ROM is cheap to add,
+bank 0 is not, so bank 0 is usually the first thing a project runs out of.
 
 | | Bytes |
 |---|---|
@@ -226,21 +263,21 @@ Everything else this plugin adds lives in banked ROM.
 
 | Module | This plugin | Stock engine | Bank 0 cost |
 |---|---|---|---|
-| `core/vm_ui.c` | 709 | 678 | +31 |
+| Text events | 709 | 678 | +31 |
 
-Modules that replace or patch a stock engine file only cost the *difference*:
+A module that replaces a stock engine file costs only the *difference*, because
 the stock version's bank 0 bytes were being spent anyway.
 
 <details><summary>How this was measured</summary>
 
-GB Studio 4.3.0-e1, default engine settings. Each module is compiled with the
-toolchain and flags GB Studio itself uses, and the `A _HOME size` record SDCC
-writes into the resulting `.rel` object is read back; the stock column is the
-same compile of the engine file this module replaces.
+GB Studio 4.3.0-e1, default engine settings. Each module was compiled with the
+toolchain and flags GB Studio itself uses, and the bank 0 size the compiler
+recorded was read back. The stock column is the same compile of the engine file
+the module replaces.
 
-The "free" figure is a stock project with this plugin and nothing else. Your
-own number will differ: other plugins, and any engine settings that change what
-the core compiles, move it independently of this plugin.
+The "free" figure assumes a stock project with this plugin and nothing else.
+Your own number will differ, because other plugins and any engine settings that
+change what the core compiles move it too.
 
 </details>
 <!-- BANK0:END -->
@@ -250,8 +287,8 @@ the core compiles, move it independently of this plugin.
 Grouped by the date each change was merged into the official
 [gb-studio-plugins](https://github.com/gb-studio-dev/gb-studio-plugins) repository.
 
-Only bug fixes, new features and feature changes are listed. Engine version
-bumps, patch regeneration, packaging fixes and documentation edits are omitted.
+Only bug fixes, new features and feature changes are listed. Engine version bumps, patch
+regeneration, packaging fixes and documentation edits are omitted.
 
 ### 2026-06-28
 
